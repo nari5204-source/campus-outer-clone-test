@@ -145,13 +145,23 @@
     .sec-title { font-size: 21px; font-weight: 800; line-height: 1.3; margin-bottom: 5px; }
     .sec-sub { font-size: 13px; color: var(--muted); }
 
-    /* Theme Header (Variant B) */
-    .theme-block { margin-bottom: 26px; }
-    .theme-banner {
-      background: #F3EFE8; border-left: 3.5px solid var(--accent);
-      padding: 12px 14px; border-radius: 0 12px 12px 0; margin-bottom: 12px;
+    /* Theme / Gender Section Headers */
+    .gender-jump {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0 18px;
     }
-    .theme-banner h4 { font-size: 14.5px; font-weight: 800; margin-bottom: 2px; }
+    .jump-pill {
+      padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--ink);
+      background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 800;
+      text-align: center; text-decoration: none; cursor: pointer;
+    }
+    .jump-pill.primary { background: var(--ink); color: #FFF; }
+    .theme-block { margin-bottom: 30px; }
+    .theme-banner {
+      background: #F3EFE8; border-left: 4px solid var(--accent);
+      padding: 13px 15px; border-radius: 0 12px 12px 0; margin-bottom: 13px;
+    }
+    .theme-banner.rank-a { background: #EFECE6; border-left-color: var(--ink); }
+    .theme-banner h4 { font-size: 15.5px; font-weight: 800; margin-bottom: 3px; }
     .theme-banner p { font-size: 12px; color: #57534E; }
 
     /* Product Grid */
@@ -624,52 +634,79 @@
       const container = document.getElementById("feedContainer");
       container.innerHTML = "";
 
+      // Quick jump pills (Women on top, Men/Unisex below)
+      const jumpBar = document.createElement("div");
+      jumpBar.className = "gender-jump";
+      jumpBar.innerHTML = `
+        <a href="#secWomen" class="jump-pill primary">👩 여성 아우터 먼저 보기</a>
+        <a href="#secMen" class="jump-pill">👨 남성·유니섹스 아우터 ↓</a>
+      `;
+      container.appendChild(jumpBar);
+
+      const womenItems = PRODUCTS.filter(p => p.gender_group === "women");
+      const menItems = PRODUCTS.filter(p => p.gender_group === "men");
+
       if (VARIANT === "A") {
-        // CONTROL: Classic Popularity / Review-Count Ranking Feed
+        // CONTROL: Classic Popularity / Review-Count Ranking Feed (Split Women top, Men below)
         document.getElementById("feedKicker").textContent = "WEEKLY BEST RANKING";
-        document.getElementById("feedTitle").textContent = "실시간 판매·리뷰 인기 TOP 12";
-        document.getElementById("feedSub").textContent = "무신사·29CM에서 누적 리뷰와 판매량이 검증된 인기 겨울 아우터 순위입니다.";
+        document.getElementById("feedTitle").textContent = "실시간 판매·리뷰 인기 랭킹";
+        document.getElementById("feedSub").textContent = "무신사·29CM에서 누적 리뷰와 판매량이 검증된 여성·남성 인기 겨울 아우터 순위입니다.";
 
-        const sorted = [...PRODUCTS].sort((a, b) => b.reviews - a.reviews);
-        const grid = document.createElement("div");
-        grid.className = "prod-grid";
-        sorted.forEach((p, idx) => grid.appendChild(createProductCard(p, "A", idx + 1)));
-        container.appendChild(grid);
-      } else {
-        // TREATMENT: Clothing-Science Mix-and-Match Curation Feed (Exact same 12 products!)
-        document.getElementById("feedKicker").textContent = "CLOTHING SCIENCE CURATION";
-        document.getElementById("feedTitle").textContent = "의류학과 큐레이션 · 클론 탈출 믹스매치";
-        document.getElementById("feedSub").textContent = "익숙한 기본 아우터 옆에 소재·컬러·기장을 비튼 대안 아이템을 페어링했습니다.";
-
-        const themes = [
+        const sections = [
           {
-            key: "theme1",
-            title: "01. 텍스처 변주 — 무광 나일론 → 퍼·부클 질감",
-            desc: "색상을 바꾸기 부담스럽다면 질감만 바꿔보세요. 기본 숏패딩과 실패 없이 교체할 수 있는 퍼·부클 아우터 조합입니다."
+            id: "secWomen",
+            title: "👩 여성 아우터 인기 랭킹 TOP 6",
+            desc: "여성 코트·퍼자켓·아우터 누적 리뷰순 베스트",
+            items: [...womenItems].sort((a, b) => b.reviews - a.reviews)
           },
           {
-            key: "theme2",
-            title: "02. 컬러 확장 — 블랙 롱코트 → 버터·카키 어스톤",
-            desc: "블랙 코트·패딩과 똑같은 데일리 이너에 그대로 걸쳐도 캠퍼스 시선이 확 달라지는 뉴트럴·소프트 컬러 페어링입니다."
-          },
-          {
-            key: "theme3",
-            title: "03. 원포인트 레이어링 — 블랙 이너 + 네이비·스카이블루",
-            desc: "어두운 겨울 하의·니트 위에 얹기만 해도 코디 난이도 0%로 탈클론을 완성하는 포인트 아우터 조합입니다."
+            id: "secMen",
+            title: "👨 남성·유니섹스 아우터 인기 랭킹 TOP 6",
+            desc: "남성·공용 숏패딩·발마칸 코트 누적 리뷰순 베스트",
+            items: [...menItems].sort((a, b) => b.reviews - a.reviews)
           }
         ];
 
-        themes.forEach(th => {
+        sections.forEach(sec => {
           const block = document.createElement("div");
           block.className = "theme-block";
-          block.innerHTML = `<div class="theme-banner"><h4>${th.title}</h4><p>${th.desc}</p></div>`;
+          block.id = sec.id;
+          block.innerHTML = `<div class="theme-banner rank-a"><h4>${sec.title}</h4><p>${sec.desc}</p></div>`;
           const grid = document.createElement("div");
           grid.className = "prod-grid";
-          // Put diverse longtail items FIRST in each theme pair alongside basic anchors
-          const items = PRODUCTS
-            .filter(p => p.theme === th.key)
-            .sort((a, b) => (a.tier === "longtail_diverse" ? -1 : 1));
-          items.forEach((p, idx) => grid.appendChild(createProductCard(p, "B", idx + 1)));
+          sec.items.forEach((p, idx) => grid.appendChild(createProductCard(p, "A", idx + 1)));
+          block.appendChild(grid);
+          container.appendChild(block);
+        });
+      } else {
+        // TREATMENT: Clothing-Science Mix-and-Match Curation Feed (Same 6 Women + 6 Men items!)
+        document.getElementById("feedKicker").textContent = "STYLE MIX & MATCH CURATION";
+        document.getElementById("feedTitle").textContent = "클론 탈출 믹스매치 큐레이션";
+        document.getElementById("feedSub").textContent = "익숙한 기본 아우터 대신 소재·컬러·실루엣 한 스푼으로 탈클론하는 성별 맞춤 조합입니다.";
+
+        const sections = [
+          {
+            id: "secWomen",
+            title: "👩 여성 아우터 · 클론 탈출 믹스매치",
+            desc: "블랙 롱코트 대신 버터·브라운 퍼 텍스처와 스카이블루 원포인트로 실패 없는 변주",
+            items: [...womenItems].sort((a, b) => (a.tier === "longtail_diverse" ? -1 : 1))
+          },
+          {
+            id: "secMen",
+            title: "👨 남성·유니섹스 아우터 · 클론 탈출 믹스매치",
+            desc: "매트 블랙 숏패딩 대신 딥 네이비·샌드 베이지·웜톤 파카로 코디 난이도 0% 탈클론",
+            items: [...menItems].sort((a, b) => (a.tier === "longtail_diverse" ? -1 : 1))
+          }
+        ];
+
+        sections.forEach(sec => {
+          const block = document.createElement("div");
+          block.className = "theme-block";
+          block.id = sec.id;
+          block.innerHTML = `<div class="theme-banner"><h4>${sec.title}</h4><p>${sec.desc}</p></div>`;
+          const grid = document.createElement("div");
+          grid.className = "prod-grid";
+          sec.items.forEach((p, idx) => grid.appendChild(createProductCard(p, "B", idx + 1)));
           block.appendChild(grid);
           container.appendChild(block);
         });
@@ -684,7 +721,7 @@
       logEvent("product_click", {
         product_id: p.id,
         item_tier: p.tier,
-        meta: { brand: p.brand, color_tone: p.color_tone, platform: p.platform }
+        meta: { brand: p.brand, color_tone: p.color_tone, platform: p.platform, gender_group: p.gender_group }
       });
 
       document.getElementById("modalBrand").textContent = `${p.brand} · ${p.platform}`;
