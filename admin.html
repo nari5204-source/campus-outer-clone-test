@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CLONE CHECK — 실시간 A/B 테스트 퍼널 대시보드</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Noto Sans KR', sans-serif; background: #FAF9F6; color: #141414; padding: 28px 20px 60px; }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #141414; padding-bottom: 14px; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+    h1 { font-size: 24px; font-weight: 800; }
+    .sub { font-size: 13px; color: #6B6B6B; margin-top: 4px; }
+    .controls { display: flex; gap: 8px; }
+    button { padding: 9px 14px; border-radius: 9px; border: 1.5px solid #141414; background: #141414; color: #FFF; font-weight: 700; font-size: 13px; cursor: pointer; }
+    button.ghost { background: #FFF; color: #141414; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px; }
+    .kpi { background: #FFF; border: 1px solid #E6E3DC; border-radius: 14px; padding: 16px; }
+    .kpi .lbl { font-size: 12px; color: #6B6B6B; font-weight: 600; }
+    .kpi .val { font-size: 28px; font-weight: 800; margin-top: 4px; }
+    .kpi .delta { font-size: 12px; font-weight: 700; margin-top: 4px; color: #C26D4A; }
+    table { width: 100%; border-collapse: collapse; background: #FFF; border: 1px solid #E6E3DC; border-radius: 14px; overflow: hidden; margin-bottom: 24px; }
+    th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #F0EDE6; font-size: 13.5px; }
+    th { background: #141414; color: #FFF; font-weight: 700; }
+    .bar-bg { height: 10px; background: #EFECE6; border-radius: 99px; overflow: hidden; margin-top: 4px; }
+    .bar-a { height: 100%; background: #52525B; }
+    .bar-b { height: 100%; background: #C26D4A; }
+    .notice { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 12px; padding: 14px 16px; font-size: 13px; margin-bottom: 20px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>CLONE CHECK — 실시간 A/B 테스트 대시보드</h1>
+        <div class="sub">Supabase 무료 티어 실시간 퍼널 · 롱테일(탈클론) 클릭 비중 · 리텐션 성과 집계</div>
+      </div>
+      <div class="controls">
+        <button class="ghost" onclick="loadData()">🔄 새로고침</button>
+        <button onclick="downloadCSV()">⬇️ CSV 다운로드 (4단계 분석용)</button>
+      </div>
+    </header>
+
+    <div id="keyNotice" class="notice">
+      ⚠️ 아직 <code>SUPABASE_ANON_KEY</code>가 입력되지 않아 현재 브라우저의 로컬 테스트 로그만 표시 중입니다. 키를 입력하면 모든 대학생 참가자의 실시간 Supabase 로그가 집계됩니다.
+    </div>
+
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <h3 style="font-size:16px;font-weight:800;margin-bottom:10px;">📊 A안(인기순) vs B안(의류학 큐레이션) 5단계 퍼널 비교</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>퍼널 단계 / 핵심 지표</th>
+          <th>A안 (인기 랭킹순)</th>
+          <th>B안 (의류학 믹스매치)</th>
+          <th>B안 개선폭 (Δ)</th>
+        </tr>
+      </thead>
+      <tbody id="funnelBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://btufyhnkidxrkfddhkxr.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_lIyzkmnmdsTiq2v6O_bxQA_kDnrvZqx";
+    let rawEvents = [];
+
+    async function loadData() {
+      if (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.startsWith("PASTE_")) {
+        document.getElementById("keyNotice").style.display = "block";
+        rawEvents = JSON.parse(localStorage.getItem("cc_local_events") || "[]");
+      } else {
+        document.getElementById("keyNotice").style.display = "none";
+        const resp = await fetch(`${SUPABASE_URL}/rest/v1/ab_events?select=*&limit=10000`, {
+          headers: {
+            "apikey": SUPABASE_ANON_KEY
+          }
+        });
+        const all = await resp.json();
+        rawEvents = Array.isArray(all) ? all.filter(e => !String(e.session_id || "").startsWith("__test_")) : [];
+      }
+      renderStats();
+    }
+
+    function uniqSessions(arr, type) {
+      return new Set(arr.filter(e => e.event_type === type).map(e => e.session_id)).size;
+    }
+
+    function pct(num, den) {
+      return den > 0 ? (num / den * 100) : 0;
+    }
+
+    function renderStats() {
+      const A = rawEvents.filter(e => e.variant === "A");
+      const B = rawEvents.filter(e => e.variant === "B");
+
+      const totalSessions = new Set(rawEvents.map(e => e.session_id)).size;
+      const refVisits = uniqSessions(rawEvents, "referral_visit");
+
+      const aLand = uniqSessions(A, "landing_view");
+      const bLand = uniqSessions(B, "landing_view");
+      const aQuiz = uniqSessions(A, "quiz_complete");
+      const bQuiz = uniqSessions(B, "quiz_complete");
+      const aClickU = uniqSessions(A, "product_click");
+      const bClickU = uniqSessions(B, "product_click");
+      const aSaveU = uniqSessions(A, "product_save");
+      const bSaveU = uniqSessions(B, "product_save");
+      const aBuyU = uniqSessions(A, "purchase_intent");
+      const bBuyU = uniqSessions(B, "purchase_intent");
+      const aShareU = uniqSessions(A, "retention_share");
+      const bShareU = uniqSessions(B, "retention_share");
+      const aDropU = uniqSessions(A, "retention_drop_alert");
+      const bDropU = uniqSessions(B, "retention_drop_alert");
+
+      // North Star: Longtail diverse share of all product clicks
+      const aClicks = A.filter(e => e.event_type === "product_click");
+      const bClicks = B.filter(e => e.event_type === "product_click");
+      const aLongShare = pct(aClicks.filter(e => e.item_tier === "longtail_diverse").length, aClicks.length);
+      const bLongShare = pct(bClicks.filter(e => e.item_tier === "longtail_diverse").length, bClicks.length);
+
+      document.getElementById("kpiGrid").innerHTML = `
+        <div class="kpi"><div class="lbl">총 참여자 (고유 세션)</div><div class="val">${totalSessions}명</div><div class="delta">A안 ${aLand}명 · B안 ${bLand}명</div></div>
+        <div class="kpi"><div class="lbl">★ 핵심지표: 탈클론 아우터 클릭 비중</div><div class="val">${bLongShare.toFixed(1)}%</div><div class="delta">A안(${aLongShare.toFixed(1)}%) 대비 ${(bLongShare - aLongShare >= 0 ? "+" : "")}${(bLongShare - aLongShare).toFixed(1)}%p</div></div>
+        <div class="kpi"><div class="lbl">찜/저장 전환율 (진단완료 대비)</div><div class="val">${pct(bSaveU, bQuiz).toFixed(1)}%</div><div class="delta">A안 ${pct(aSaveU, aQuiz).toFixed(1)}% vs B안 ${pct(bSaveU, bQuiz).toFixed(1)}%</div></div>
+        <div class="kpi"><div class="lbl">바이럴 추천 유입 (?ref=)</div><div class="val">${refVisits}명</div><div class="delta">공유 클릭 총 ${aShareU + bShareU}건</div></div>
+      `;
+
+      const rows = [
+        ["1단계: 랜딩 진입 (세션)", `${aLand}명 (100%)`, `${bLand}명 (100%)`, "-"],
+        ["2단계: NPC 진단 완료율", `${aQuiz}명 (${pct(aQuiz, aLand).toFixed(1)}%)`, `${bQuiz}명 (${pct(bQuiz, bLand).toFixed(1)}%)`, `${(pct(bQuiz, bLand) - pct(aQuiz, aLand)).toFixed(1)}%p`],
+        ["3단계: 아우터 상세 클릭률 (CTR)", `${aClickU}명 (${pct(aClickU, aQuiz).toFixed(1)}%)`, `${bClickU}명 (${pct(bClickU, bQuiz).toFixed(1)}%)`, `${(pct(bClickU, bQuiz) - pct(aClickU, aQuiz)).toFixed(1)}%p`],
+        ["★ 롱테일(탈클론) 아우터 클릭 비중", `${aLongShare.toFixed(1)}% (${aClicks.filter(e=>e.item_tier==="longtail_diverse").length}/${aClicks.length})`, `${bLongShare.toFixed(1)}% (${bClicks.filter(e=>e.item_tier==="longtail_diverse").length}/${bClicks.length})`, `${(bLongShare - aLongShare).toFixed(1)}%p`],
+        ["4단계-1: 아우터 찜/저장 전환율", `${aSaveU}명 (${pct(aSaveU, aQuiz).toFixed(1)}%)`, `${bSaveU}명 (${pct(bSaveU, bQuiz).toFixed(1)}%)`, `${(pct(bSaveU, bQuiz) - pct(aSaveU, aQuiz)).toFixed(1)}%p`],
+        ["4단계-2: 구매 링크 클릭 전환율", `${aBuyU}명 (${pct(aBuyU, aQuiz).toFixed(1)}%)`, `${bBuyU}명 (${pct(bBuyU, bQuiz).toFixed(1)}%)`, `${(pct(bBuyU, bQuiz) - pct(aBuyU, aQuiz)).toFixed(1)}%p`],
+        ["5단계-1: 친구 공유(리텐션) 참여율", `${aShareU}명 (${pct(aShareU, aQuiz).toFixed(1)}%)`, `${bShareU}명 (${pct(bShareU, bQuiz).toFixed(1)}%)`, `${(pct(bShareU, bQuiz) - pct(aShareU, aQuiz)).toFixed(1)}%p`],
+        ["5단계-2: 12시 드롭 알림 예약률", `${aDropU}명 (${pct(aDropU, aQuiz).toFixed(1)}%)`, `${bDropU}명 (${pct(bDropU, bQuiz).toFixed(1)}%)`, `${(pct(bDropU, bQuiz) - pct(aDropU, aQuiz)).toFixed(1)}%p`]
+      ];
+
+      document.getElementById("funnelBody").innerHTML = rows.map(r => `
+        <tr><td><b>${r[0]}</b></td><td>${r[1]}</td><td>${r[2]}</td><td style="font-weight:800;color:#C26D4A;">${r[3]}</td></tr>
+      `).join("");
+    }
+
+    function downloadCSV() {
+      if (!rawEvents.length) return alert("수집된 이벤트가 아직 없습니다.");
+      const cols = ["created_at","session_id","variant","event_type","product_id","item_tier","npc_score","referrer_id"];
+      const lines = [cols.join(",")].concat(rawEvents.map(e => cols.map(c => JSON.stringify(e[c] ?? "")).join(",")));
+      const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "ab_test_events_export.csv";
+      a.click();
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
